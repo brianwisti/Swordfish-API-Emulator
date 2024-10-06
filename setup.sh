@@ -27,13 +27,15 @@
 #  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
 #  THE POSSIBILITY OF SUCH DAMAGE.
 
+set -euo pipefail
+IFS=$'\n\t'
+
 BASE_DIR=$(pwd)
 WORK_DIR=../Swordfish
 
 API_PORT=5000
 SETUP_ONLY=
 
-COMMON_NAME="$1"
 EXTFILE=certificate_config.cnf
 
 function print_help {
@@ -58,16 +60,18 @@ Options:
 EOF
 }
 
+ARG=${1:-}
+
 # Extract command line args
-while [ "$1" != "" ]; do
-    case $1 in
+while [ "$ARG" != "" ]; do
+    case $ARG in
         -p | --port )
             shift
-            API_PORT=$1
+            API_PORT=${1:-}
             ;;
         -w | --workspace )
             shift
-            WORK_DIR=$1
+            WORK_DIR=${1:-}
             ;;
         -n | --no-start)
             SETUP_ONLY="true"
@@ -77,6 +81,7 @@ while [ "$1" != "" ]; do
             exit 1
     esac
     shift
+    ARG=${1:-}
 done
 
 # Do some system sanity checks first
@@ -85,15 +90,6 @@ if ! [ -x "$(command -v python3)" ]; then
          "found"
     echo ""
     echo "See https://www.python.org/downloads/ for installation instructions."
-    echo ""
-    exit 1
-fi
-
-if ! [ -x "$(command -v virtualenv)" ]; then
-    echo "Error: virtualenv is required."
-    echo ""
-    echo "See https://virtualenv.pypa.io/en/stable/installation/ for" \
-         "installation instructions."
     echo ""
     exit 1
 fi
@@ -119,8 +115,9 @@ git clone --depth 1 https://github.com/DMTF/Redfish-Interface-Emulator \
 # Set up our virtual environment
 echo "Setting up emulator Python virtualenv and requirements..."
 # cd $WORK_DIR
-virtualenv --python=python3 "$WORK_DIR"/venv
-"$WORK_DIR"/venv/bin/pip install -q -r "$BASE_DIR"/requirements.txt
+VENV_DIR="$WORK_DIR/.venv"
+python -m venv $VENV_DIR
+"$VENV_DIR/bin/pip" install -q -r "$BASE_DIR/requirements.txt"
 
 # Remove Redfish static / starting mockups
 rm -r "$WORK_DIR"/api_emulator/redfish/static
@@ -148,9 +145,6 @@ openssl genrsa -out "$WORK_DIR"/server.key 2048
 echo "Generating public key"
 openssl rsa -in "$WORK_DIR"/server.key -pubout -out "$WORK_DIR"/server_public.key
 
-# ## Update Common Name in External File
-# /bin/echo "commonName              = $COMMON_NAME" >> $EXTFILE
-
 # Generating Certificate Signing Request using config file
 echo "Generating Certificate Signing Request"
 openssl req -new -key "$WORK_DIR"/server.key -out "$WORK_DIR"/server.csr -config "$WORK_DIR"/$EXTFILE
@@ -164,7 +158,7 @@ if [ "$SETUP_ONLY" == "true" ]; then
          "emulator:"
     echo ""
     echo "   cd $WORK_DIR"
-    echo "   ./venv/bin/python emulator.py"
+    echo "   .venv/bin/python emulator.py"
     echo ""
     exit 0
 fi
@@ -182,7 +176,7 @@ $(tput bold)Press Ctrl-C when done.$(tput sgr0)
 EOF
 
 cd $WORK_DIR
-./venv/bin/python emulator.py -port $API_PORT
+$VENV_DIR/bin/python emulator.py -port $API_PORT
 
 echo ""
 echo "Emulator can be rerun from '$WORK_DIR' by running the command:"
